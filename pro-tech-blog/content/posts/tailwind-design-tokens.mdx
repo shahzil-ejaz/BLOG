@@ -3,6 +3,14 @@ title: "Tailwind CSS v4 and design tokens"
 date: "2024-07-10"
 description: "Map CSS variables to `@theme`, keep contrast accessible, and share tokens with MDX content."
 tags: ["Styling", "Tailwind", "CSS"]
+author: "Pro Tech Blog"
+readTime: "10 min read"
+---
+
+If your design system is “whatever Tailwind class I used last time”, it won’t scale. Tokens are the missing layer: a small vocabulary that keeps UI and content consistent without freezing you into a single palette.
+
+This article shows a practical token setup for Tailwind v4 that works for *apps* (components) and *content* (MDX).
+
 ---
 
 ## Tokens live in CSS
@@ -23,19 +31,79 @@ Define semantic variables once (`--background`, `--foreground`, `--accent`) and 
 }
 ```
 
+<StepCard step={1} title="Name tokens by intent, not by color">
+  <div className="mb-2 last:mb-0">
+    <strong>Good:</strong> <code>--background</code>, <code>--muted</code>, <code>--accent</code>
+  </div>
+  <div className="mb-2 last:mb-0">
+    <strong>Bad:</strong> <code>--blue-500</code>, <code>--gray-900</code>
+  </div>
+  <div className="mb-2 last:mb-0">
+    Intent tokens let you change the palette without refactoring every component.
+  </div>
+</StepCard>
+
+## Tailwind v4: bridge tokens into utilities
+
+Tailwind v4 supports token-first thinking. In this codebase we already map CSS vars via `@theme inline`:
+
+```css title="app/globals.css (token bridge)"
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+```
+
+That lets your “global meaning” live in CSS while Tailwind handles layout/spacing/typography ergonomics.
+
 ## Bridge to content
 
 MDX and marketing copy should consume the same tokens—use `text-[var(--muted)]` sparingly and prefer utilities where they exist so refactors stay mechanical.
+
+<CompareTable rowsJson='[
+  {"label":"What changes often","server":"Palette (hex values)","client":"Spacing scale, layout primitives"},
+  {"label":"Where it belongs","server":"CSS variables (tokens)","client":"Tailwind utilities"},
+  {"label":"Why","server":"Avoid touching 200 components","client":"Keep dev speed and consistency"}
+]' />
 
 ### Accessibility
 
 When you pick an accent, verify **focus rings** and **link contrast** in both themes. Automated checks catch some issues; manual tab-through catches the rest.
 
-<Callout>
+<Callout variant="warning">
   If a color works for body text but fails for small UI labels, promote it to a
   dedicated token (for example `--accent-muted`) instead of diluting the main
   accent.
 </Callout>
+
+## A practical token set (small but complete)
+
+You don’t need 40 tokens. You need the ones that prevent inconsistency:
+
+- `--background`, `--foreground`
+- `--muted`, `--muted-bg`
+- `--border`
+- `--card`
+- `--accent` (and optionally `--accent-muted`)
+- `--code-bg`
+
+<StepCard step={2} title="Reserve space for ads to avoid CLS">
+  If you plan to add AdSense, define token-friendly placeholder regions with a min-height.
+  That prevents layout shift when real ads load.
+</StepCard>
+
+<Quiz
+  question="Which token naming approach scales best?"
+  optionsJson='[
+    {"label":"Use palette names like --blue-500 so you always know the color","correct":false},
+    {"label":"Use intent names like --accent, --muted, --border so you can swap palettes safely","correct":true},
+    {"label":"Avoid tokens and use Tailwind classes everywhere","correct":false},
+    {"label":"Use hex values inline in components for precision","correct":false}
+  ]'
+  explanation="Intent tokens decouple design decisions (palette) from usage sites (components/content), so changing brand colors doesn’t require refactoring every file."
+/>
 
 ## Summary
 

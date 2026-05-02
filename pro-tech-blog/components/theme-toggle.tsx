@@ -14,9 +14,7 @@ export function ThemeToggle() {
   }, []);
 
   if (!mounted) {
-    return (
-      <span className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border)]" />
-    );
+    return <span className="inline-flex size-9 items-center justify-center rounded-full border border-[var(--border)]" />;
   }
 
   const isDark = resolvedTheme === "dark";
@@ -25,7 +23,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setTheme(isDark ? "light" : "dark")}
-      className="inline-flex size-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--foreground)] transition hover:border-[var(--accent)] hover:text-[var(--accent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+      className="inline-flex size-9 items-center justify-center rounded-full border border-[var(--border)] text-[var(--foreground)] transition-colors hover:bg-[var(--muted-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
       aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
     >
       {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}

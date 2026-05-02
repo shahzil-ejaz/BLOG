@@ -49,9 +49,9 @@ export function Callout({
     >
       <Icon className={`mt-0.5 size-5 shrink-0 ${color}`} aria-hidden />
       <div className="min-w-0 text-sm leading-relaxed [&_p]:my-1.5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0">
-        <p className={`mb-1 text-xs font-bold uppercase tracking-wider ${color}`}>
+        <div className={`mb-1 text-xs font-bold uppercase tracking-wider ${color}`}>
           {label}
-        </p>
+        </div>
         {children}
       </div>
     </aside>

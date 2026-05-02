@@ -15,7 +15,7 @@ export function StepCard({ step, title, children }: StepCardProps) {
         {step}
       </div>
       <div className="min-w-0">
-        <p className="mb-2 font-semibold text-[var(--foreground)]">{title}</p>
+        <div className="mb-2 font-semibold text-[var(--foreground)]">{title}</div>
         <div className="text-sm leading-relaxed text-[var(--muted)]">
           {children}
         </div>

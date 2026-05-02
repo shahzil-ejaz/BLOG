@@ -1,9 +1,27 @@
 ---
 title: "React hooks patterns that scale"
 date: "2024-06-02"
-description: "Stable dependencies, custom hooks as boundaries, and avoiding stale closures in effects."
+description: "Stable dependencies, event/effect boundaries, and patterns for hooks that stay correct as your app grows."
 tags: ["React", "Hooks", "Architecture"]
+author: "Pro Tech Blog"
+readTime: "12 min read"
 ---
+
+Most hooks articles teach syntax. This one teaches *shape*: how to design hooks that stay predictable under change.
+
+By the end, you’ll have a mental model for effects, stable dependencies, and a few battle-tested patterns you can copy-paste without creating time bombs.
+
+---
+
+## The rule that prevents most bugs
+
+> **Effects synchronize with external systems. Events handle user intent.**
+
+When you invert that (put user intent into effects), you get stale closures, double requests, and “why did this run?” debugging sessions.
+
+<StepCard step={1} title="Prefer events. Use effects for sync.">
+  If a piece of work should happen because the user clicked, typed, or submitted — do it in an event handler. If it should happen because the component must stay in sync with something outside React (subscriptions, timers, network listeners), do it in an effect.
+</StepCard>
 
 ## Dependencies tell the truth
 
@@ -30,6 +48,69 @@ export function useWindowWidth() {
 }
 ```
 
+<Callout variant="warning">
+  If you *feel* like you need to omit a dependency, first ask: “Am I trying to use an effect like an event?” That’s the most common reason dependency arrays get ‘optimized’ into incorrectness.
+</Callout>
+
+## Stale closure: the bug behind “it works on my machine”
+
+This is the classic failure mode:
+
+```tsx title=" Stale closure"
+\"use client\";
+
+import { useEffect, useState } from \"react\";
+
+export function CounterLogger() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Logs the count from the render that created this interval.
+      console.log(count);
+    }, 1000);
+    return () => clearInterval(id);
+  }, []); // looks \"stable\" but isn't
+
+  return (
+    <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
+  );
+}
+```
+
+Fix it by moving changing values out of the closure (functional update) or rebuilding the subscription when needed:
+
+```tsx title=" Fix: functional update"
+\"use client\";
+
+import { useEffect, useState } from \"react\";
+
+export function CounterLogger() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCount((c) => {
+        console.log(c);
+        return c;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <button onClick={() => setCount((c) => c + 1)}>Count: {count}</button>
+  );
+}
+```
+
+<CompareTable rowsJson='[
+  {"label":"Bug class","server":"Stale closure: interval captures old render","client":"N/A"},
+  {"label":"Symptom","server":"Logs old value / ignores updates","client":"N/A"},
+  {"label":"Fix","server":"Functional update or dependency-based resubscribe","client":"N/A"},
+  {"label":"Rule","server":"Effects should sync subscriptions, not encode intent","client":"N/A"}
+]' />
+
 ## Custom hooks are module boundaries
 
 Reach for a custom hook when the same three lines of stateful glue appear twice—not when you want a shorter file.
@@ -37,6 +118,48 @@ Reach for a custom hook when the same three lines of stateful glue appear twice�
 ### Effects and events
 
 Prefer event handlers for user-driven work. Reserve effects for synchronizing with **external systems**: network, storage, subscriptions, non-React widgets.
+
+<StepCard step={2} title="A hook is a boundary, not a helper">
+  A good hook hides details behind a name that describes *why* it exists. If you can’t name it without mentioning implementation (e.g. <code>useFetchWithAbortAndRetry</code>), it’s probably two hooks.
+</StepCard>
+
+## A scalable pattern: state + actions
+
+As apps grow, you’ll want hooks to return *both* data and stable actions.
+
+```tsx title=" Pattern: return state + actions"
+\"use client\";
+
+import { useCallback, useMemo, useState } from \"react\";
+
+export function useToggle(initial = false) {
+  const [on, setOn] = useState(initial);
+
+  const setTrue = useCallback(() => setOn(true), []);
+  const setFalse = useCallback(() => setOn(false), []);
+  const toggle = useCallback(() => setOn((v) => !v), []);
+
+  return useMemo(
+    () => ({ on, setTrue, setFalse, toggle }),
+    [on, setTrue, setFalse, toggle],
+  );
+}
+```
+
+<Callout variant="tip">
+  Returning stable actions reduces prop drilling churn. When your UI grows, “stable actions” becomes a performance tool and a readability tool.
+</Callout>
+
+<Quiz
+  question="Which is the best reason to use an effect?"
+  optionsJson='[
+    {"label":"To run an API request when the user clicks a button","correct":false},
+    {"label":"To subscribe to an external system (timer, websocket, event listener) and keep it in sync","correct":true},
+    {"label":"To avoid passing props to a child component","correct":false},
+    {"label":"To make code run exactly once in development","correct":false}
+  ]'
+  explanation="Effects are for synchronizing with external systems. User intent belongs in event handlers. Development may run effects more than once, so correctness must not rely on 'once'."
+/>
 
 ## Mental model
 

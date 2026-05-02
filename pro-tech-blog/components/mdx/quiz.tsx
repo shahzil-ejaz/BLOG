@@ -64,11 +64,11 @@ export function Quiz({
 
   return (
     <div className="my-8 rounded-xl border border-[var(--border)] bg-[var(--card)] p-6">
-      <p className="mb-1 text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-[var(--accent)]">
         Quick Check
-      </p>
+      </div>
       {question ? (
-        <p className="mb-4 font-medium text-[var(--foreground)]">{question}</p>
+        <div className="mb-4 font-medium text-[var(--foreground)]">{question}</div>
       ) : null}
       <div className="flex flex-col gap-2">
         {safeOptions.map((opt, i) => {
@@ -110,18 +110,18 @@ export function Quiz({
         })}
       </div>
       {safeOptions.length === 0 ? (
-        <p className="mt-3 text-sm text-[var(--muted)]">
+        <div className="mt-3 text-sm text-[var(--muted)]">
           Quiz options are missing. Add an{" "}
           <code className="rounded bg-[var(--muted-bg)] px-1">optionsJson</code>{" "}
           prop (JSON array) or fix the{" "}
           <code className="rounded bg-[var(--muted-bg)] px-1">options</code> prop
           in MDX.
-        </p>
+        </div>
       ) : null}
       {answered && explanation ? (
-        <p className="mt-4 rounded-lg bg-[var(--muted-bg)] px-4 py-3 text-sm leading-relaxed text-[var(--muted)]">
+        <div className="mt-4 rounded-lg bg-[var(--muted-bg)] px-4 py-3 text-sm leading-relaxed text-[var(--muted)]">
           {explanation}
-        </p>
+        </div>
       ) : null}
     </div>
   );
