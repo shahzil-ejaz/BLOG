@@ -1,0 +1,43 @@
+---
+title: "React hooks patterns that scale"
+date: "2024-06-02"
+description: "Stable dependencies, custom hooks as boundaries, and avoiding stale closures in effects."
+tags: ["React", "Hooks", "Architecture"]
+---
+
+## Dependencies tell the truth
+
+`useEffect`, `useMemo`, and `useCallback` should list **everything** they read from the render scope. Silence eslint only when you have a documented, tested reason.
+
+```tsx title="hooks/useWindowWidth.ts"
+"use client";
+
+import { useEffect, useState } from "react";
+
+export function useWindowWidth() {
+  const [width, setWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    function onResize() {
+      setWidth(window.innerWidth);
+    }
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  return width;
+}
+```
+
+## Custom hooks are module boundaries
+
+Reach for a custom hook when the same three lines of stateful glue appear twice—not when you want a shorter file.
+
+### Effects and events
+
+Prefer event handlers for user-driven work. Reserve effects for synchronizing with **external systems**: network, storage, subscriptions, non-React widgets.
+
+## Mental model
+
+Hooks encode **lifecycle + state** in function form. If a hook becomes hard to name, split it: one hook, one story.

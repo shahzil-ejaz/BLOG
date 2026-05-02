@@ -1,0 +1,44 @@
+---
+title: "Tailwind CSS v4 and design tokens"
+date: "2024-07-10"
+description: "Map CSS variables to `@theme`, keep contrast accessible, and share tokens with MDX content."
+tags: ["Styling", "Tailwind", "CSS"]
+---
+
+## Tokens live in CSS
+
+Define semantic variables once (`--background`, `--foreground`, `--accent`) and reference them from Tailwind utilities or arbitrary values in JSX.
+
+```css title="app/globals.css (excerpt)"
+:root {
+  --background: #fafafa;
+  --foreground: #0f172a;
+  --accent: #0d9488;
+}
+
+.dark {
+  --background: #0a0a0b;
+  --foreground: #f1f5f9;
+  --accent: #2dd4bf;
+}
+```
+
+## Bridge to content
+
+MDX and marketing copy should consume the same tokens—use `text-[var(--muted)]` sparingly and prefer utilities where they exist so refactors stay mechanical.
+
+### Accessibility
+
+When you pick an accent, verify **focus rings** and **link contrast** in both themes. Automated checks catch some issues; manual tab-through catches the rest.
+
+<Callout>
+  If a color works for body text but fails for small UI labels, promote it to a
+  dedicated token (for example `--accent-muted`) instead of diluting the main
+  accent.
+</Callout>
+
+## Summary
+
+- Semantic tokens first, palettes second.
+- Dark mode is a first-class theme, not an afterthought.
+- Content and UI should read from the same variables where possible.

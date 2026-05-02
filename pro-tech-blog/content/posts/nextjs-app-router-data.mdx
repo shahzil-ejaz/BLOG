@@ -1,0 +1,383 @@
+---
+title: "Advanced Next.js App Router Data Fetching"
+date: "2024-05-20"
+description: "Stop over-fetching, stop under-streaming. A complete breakdown of every data-fetching pattern in the Next.js App Router—with real code, mental models, and interactive demos."
+tags: ["Next.js", "Performance", "App Router"]
+featured: true
+author: "Pro Tech Blog"
+readTime: "14 min read"
+---
+
+Most Next.js tutorials show you *how* to fetch data. Very few explain *why* one pattern beats another—or when the shiny new API is the wrong tool for the job.
+
+This guide fixes that. By the end you'll have a complete mental model of every major data-fetching strategy in the App Router, know exactly when to use each one, and have working code you can drop into your projects today.
+
+---
+
+## The mental model that changes everything
+
+Before we touch a single line of code, internalize this hierarchy:
+
+> **Server first. Client only when you must.**
+
+The App Router's entire design philosophy flows from this principle. Every pattern we'll explore is either an extension of it or a deliberate exception to it.
+
+<DataFlowDiagram />
+
+Click through each tab above to visualise how data travels through each pattern. Come back to this diagram as you read—it'll click after the third section.
+
+---
+
+## 1 · Server Components: your default render unit
+
+<StepCard step={1} title="Start every new route as a Server Component">
+  Until you hit a browser-only API (`window`, `navigator`, event handlers) or need local state, keep the component on the server. You get direct DB access, zero JS bundle cost, and automatic request deduplication.
+</StepCard>
+
+A Server Component is just an `async` function. There's no special hook, no wrapper—just `await` your data inline:
+
+```tsx title="app/dashboard/page.tsx"
+// No 'use client' — this runs only on the server.
+export default async function DashboardPage() {
+  const user = await db.user.findFirst({ where: { id: session.userId } });
+  const stats = await fetchAnalytics(user.orgId);
+
+  return (
+    <main>
+      <h1>Welcome back, {user.name}</h1>
+      <StatsGrid data={stats} />
+    </main>
+  );
+}
+```
+
+**What you get for free:**
+- The DB call never leaves your VPC.
+- Zero waterfall between server and client—data arrives with HTML.
+- No loading spinner on first paint.
+
+<Callout variant="tip">
+  You can `await` anything inside a Server Component: Prisma, Drizzle, raw `pg`, Redis, a file-system read—whatever your stack needs. No API route required.
+</Callout>
+
+---
+
+## 2 · Parallel fetching: eliminate the accidental waterfall
+
+This is the most common performance mistake in App Router apps:
+
+```tsx title=" Sequential (slow)" 
+// Each await blocks the next. Total time = A + B + C.
+const user  = await fetchUser(id);
+const posts = await fetchPosts(id);
+const ads   = await fetchAds(id);
+```
+
+The three requests above are **independent**—they don't need each other's result. Sequencing them wastes hundreds of milliseconds on every page load.
+
+Fix it with `Promise.all`:
+
+```tsx title=" Parallel (fast)"
+// All three fire at the same time. Total time = max(A, B, C).
+const [user, posts, ads] = await Promise.all([
+  fetchUser(id),
+  fetchPosts(id),
+  fetchAds(id),
+]);
+```
+
+<CompareTable rowsJson='[{"label":"3 × 200 ms requests","server":"200 ms total ✓","client":"600 ms total ✗"},{"label":"Error handling","server":"One try/catch covers all","client":"Must handle each separately"},{"label":"Type safety","server":"Tuple destructuring","client":"Same"},{"label":"Use when","server":"Fetches are independent","client":"One result feeds another"}]' />
+
+<Callout variant="warning">
+  `Promise.all` is all-or-nothing: if *any* promise rejects, the whole batch rejects. Wrap individual fetches in a helper that returns `null` on error if partial failure is acceptable.
+</Callout>
+
+---
+
+## 3 · Cache tags and `revalidateTag`: surgical cache invalidation
+
+Next.js wraps the native `fetch` API with a caching layer you control through **tags**. A tag is a string key you attach to a fetch response; later you can invalidate all responses with that tag from a Route Handler or Server Action.
+
+```tsx title="Tagging a fetch response"
+export async function getProducts() {
+  const res = await fetch("https://api.example.com/products", {
+    next: { tags: ["products"] },
+  });
+  return res.json();
+}
+```
+
+```ts title="app/api/revalidate/route.ts"
+import { revalidateTag } from "next/cache";
+import { NextResponse } from "next/server";
+
+// Called by a webhook when inventory changes.
+export async function POST(req: Request) {
+  const { tag } = await req.json();
+  revalidateTag(tag); // ← invalidates every response tagged "products"
+  return NextResponse.json({ revalidated: true });
+}
+```
+
+<Callout variant="tip">
+  Name tags after **domain concepts**, not URLs. `"products"` is a great tag. `"https://api.example.com/products?page=1"` is a terrible tag—you'd have to know every paginated URL to invalidate them all.
+</Callout>
+
+### Time-based revalidation with `revalidate`
+
+If you don't need webhook precision, `revalidate` is simpler:
+
+```tsx title="ISR-style revalidation"
+const data = await fetch("https://api.example.com/config", {
+  next: { revalidate: 3600 }, // re-fetch at most once per hour
+});
+```
+
+<StepCard step={2} title="Choose your freshness strategy upfront">
+  Static (no revalidation) → ISR (`revalidate: N`) → Tag-based → `no-store` (always fresh). Pick the coarsest option your data allows—cached data is always faster than live data.
+</StepCard>
+
+---
+
+## 4 · `<Suspense>` and streaming: ship fast, fill in later
+
+Static shell first, slow data second. That's the streaming promise.
+
+```tsx title="app/product/[id]/page.tsx"
+import { Suspense } from "react";
+import { ProductHero } from "./product-hero";
+import { ReviewsSkeleton, Reviews } from "./reviews";
+
+export default function ProductPage({ params }: { params: { id: string } }) {
+  return (
+    <>
+      {/* Ships immediately – no async needed */}
+      <ProductHero id={params.id} />
+
+      {/* Reviews are slow; show skeleton until they arrive */}
+      <Suspense fallback={<ReviewsSkeleton />}>
+        <Reviews productId={params.id} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+```tsx title="./reviews.tsx"
+// This component is the slow one. It awaits independently on the server.
+export async function Reviews({ productId }: { productId: string }) {
+  const reviews = await fetchReviews(productId); // ← might take 800 ms
+  return <ReviewList items={reviews} />;
+}
+```
+
+**The browser receives the hero HTML first** (~50 ms). The reviews stream in ~850 ms later. The user sees *something* instantly and the page never jumps.
+
+<Callout variant="success">
+  A good rule of thumb: if a fetch takes more than **200 ms** and it's not above the fold, wrap its component in `<Suspense>`. You'll get measurable LCP improvements with almost no code change.
+</Callout>
+
+<Quiz
+  question="When should you prefer parallel fetches over Suspense boundaries?"
+  optionsJson='[{"label":"When data is below the fold and slow","correct":false},{"label":"When multiple fetches are independent and render together","correct":true},{"label":"When you need a loading skeleton","correct":false},{"label":"When the data comes from a third-party API","correct":false}]'
+  explanation="Parallel fetches (Promise.all) are for independent data that all renders at the same time—no partial display needed. Suspense is for when you want to stream partial UI progressively."
+/>
+
+---
+
+## 5 · `generateStaticParams`: prerender dynamic routes at build time
+
+For routes whose slugs are known at build time (blog posts, product pages, docs), tell Next.js what params to generate:
+
+```tsx title="app/blog/[slug]/page.tsx"
+export async function generateStaticParams() {
+  const posts = await getAllPosts();
+  return posts.map((p) => ({ slug: p.slug }));
+}
+
+export default async function BlogPost({ params }: { params: { slug: string } }) {
+  const post = await getPostBySlug(params.slug);
+  // ...
+}
+```
+
+Next.js will prerender one HTML file per slug at build time. Requests hit the CDN edge—**0 ms server time**.
+
+<Callout variant="info">
+  You can combine `generateStaticParams` with `revalidate` for ISR: the build generates initial HTML, but Next.js will regenerate stale pages on-demand in the background.
+</Callout>
+
+---
+
+## 6 · When to reach for client-side fetching
+
+Server fetching is the default. Client fetching is the *exception*. Here are the legitimate reasons to fetch on the client:
+
+<StepCard step={3} title="User-driven, on-demand data">
+  Search-as-you-type, infinite scroll, pagination—data that changes based on user input that you can't predict at render time.
+</StepCard>
+
+<StepCard step={4} title="Browser-only APIs">
+  Geolocation, WebSockets, IndexedDB. These simply don't exist on the server.
+</StepCard>
+
+<StepCard step={5} title="Highly personalised, non-cacheable data">
+  Real-time dashboards, live sports scores, or anything that's different for every user *every second*. Caching helps no one here.
+</StepCard>
+
+```tsx title="'use client' – search-as-you-type example"
+"use client";
+
+import { useState, useEffect } from "react";
+
+export function LiveSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Product[]>([]);
+
+  useEffect(() => {
+    if (!query) { setResults([]); return; }
+    const id = setTimeout(async () => {
+      const data = await fetch(`/api/search?q=${encodeURIComponent(query)}`).then(r => r.json());
+      setResults(data);
+    }, 300); // debounce
+    return () => clearTimeout(id);
+  }, [query]);
+
+  return (
+    <>
+      <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search…" />
+      {results.map(p => <p key={p.id}>{p.name}</p>)}
+    </>
+  );
+}
+```
+
+<Callout variant="warning">
+  Avoid adding `"use client"` to a component just because it's familiar. Every `"use client"` boundary ships JS to the browser. A component that only renders static HTML should *always* be a Server Component.
+</Callout>
+
+---
+
+## 7 · The island architecture: best of both worlds
+
+The real power of the App Router is that you can **mix** Server and Client Components in the same tree. The server fetches data; the client handles interaction; props flow one way (server → client).
+
+```tsx title="Server parent, client child"
+// Server Component – fetches data, no JS bundle cost
+export default async function ProductPage({ params }) {
+  const product = await getProduct(params.id);
+
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <p>{product.description}</p>
+
+      {/* Client island – handles cart state, no fetch needed */}
+      <AddToCartButton productId={product.id} price={product.price} />
+    </div>
+  );
+}
+```
+
+```tsx title="add-to-cart-button.tsx"
+"use client";
+import { useState } from "react";
+
+export function AddToCartButton({ productId, price }: { productId: string; price: number }) {
+  const [added, setAdded] = useState(false);
+
+  return (
+    <button onClick={() => { addToCart(productId); setAdded(true); }}>
+      {added ? "✓ In Cart" : `Add to Cart — $${price}`}
+    </button>
+  );
+}
+```
+
+The product data (name, description) never touches the browser's JS engine. Only the tiny `AddToCartButton` island ships JavaScript.
+
+<Callout variant="success">
+  Think of Client Components as **interactive leaves**, not root containers. Push the `"use client"` boundary as far down the tree as possible.
+</Callout>
+
+---
+
+## 8 · `unstable_cache` and `cache()`: advanced memoization
+
+### `React.cache()` — deduplicate within a request
+
+When multiple Server Components in the same render tree call the same function with the same args, `cache()` ensures the underlying fetch runs only once:
+
+```tsx title="lib/data.ts"
+import { cache } from "react";
+
+export const getUser = cache(async (id: string) => {
+  return db.user.findUnique({ where: { id } });
+});
+```
+
+Now `getUser("abc")` called from three different components in the same request tree hits the DB exactly once.
+
+### `unstable_cache` — persist across requests
+
+`cache()` deduplicates within a single render. `unstable_cache` persists the result across requests (like a Redis layer, but built in):
+
+```tsx title="lib/data.ts"
+import { unstable_cache } from "next/cache";
+
+export const getCachedProducts = unstable_cache(
+  async () => db.product.findMany(),
+  ["products-list"],
+  { revalidate: 60, tags: ["products"] }
+);
+```
+
+<CompareTable rowsJson='[{"label":"Scope","server":"React.cache() — per request","client":"unstable_cache — across requests"},{"label":"Storage","server":"In-memory (request lifetime)","client":"Next.js data cache (persistent)"},{"label":"Invalidation","server":"Automatic on next request","client":"revalidateTag / revalidatePath"},{"label":"Best for","server":"Deduplicating DB calls in a tree","client":"Expensive computations, API calls"}]' />
+
+---
+
+## 9 · Patterns cheat sheet
+
+Here's the decision tree condensed to a single table:
+
+| Scenario | Pattern |
+|---|---|
+| Static page, data known at build | `generateStaticParams` + no `revalidate` |
+| Static page, data changes hourly | `fetch` + `revalidate: 3600` |
+| Dynamic page, cache invalidated by webhook | `fetch` + `next.tags` + `revalidateTag` |
+| Always-fresh, personalised data | `fetch` + `cache: 'no-store'` |
+| Slow section, rest of page is fast | `<Suspense>` wrapping async SC |
+| Multiple independent fetches | `Promise.all([...])` |
+| Search-as-you-type, live updates | `"use client"` + `useEffect` + `/api/...` |
+| Expensive DB call used in many components | `React.cache()` |
+| Expensive call cached across requests | `unstable_cache` |
+
+---
+
+## Takeaways
+
+<StepCard step={1} title="Default to Server Components">
+  No "use client" unless you have a concrete reason. Every Server Component is free HTML with zero client JS.
+</StepCard>
+
+<StepCard step={2} title="Parallelize by default">
+  If two fetches don't depend on each other, wrap them in `Promise.all`. Always.
+</StepCard>
+
+<StepCard step={3} title="Name cache tags after domain concepts">
+  `"products"`, `"user-profile"`, not URLs. One `revalidateTag("products")` clears every cached product fetch site-wide.
+</StepCard>
+
+<StepCard step={4} title="Stream slow sections with <Suspense>">
+  The hero renders instantly; the reviews arrive when they're ready. Users perceive the page as faster even if total load time is the same.
+</StepCard>
+
+<StepCard step={5} title="Push 'use client' to the leaves">
+  Server parent → Client island. Props flow down. Events come back up. JavaScript ships only where interaction lives.
+</StepCard>
+
+<Counter />
+
+---
+
+*Have a pattern I missed? Spot an error? Open an issue or PR on the [GitHub repo](https://github.com).*

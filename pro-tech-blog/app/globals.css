@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+:root {
+  --background: #fafafa;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --muted-bg: #f1f5f9;
+  --border: #e2e8f0;
+  --accent: #0d9488;
+  --card: #ffffff;
+  --code-bg: #f8fafc;
+}
+
+.dark {
+  --background: #0a0a0b;
+  --foreground: #f1f5f9;
+  --muted: #94a3b8;
+  --muted-bg: #111113;
+  --border: #27272a;
+  --accent: #2dd4bf;
+  --card: #0c0c0e;
+  --code-bg: #0f0f12;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* MDX article: typography + custom tweaks */
+.article-mdx {
+  @apply prose prose-slate max-w-none dark:prose-invert;
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-links: var(--accent);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-quotes: var(--muted);
+  --tw-prose-code: var(--foreground);
+}
+
+.article-mdx pre {
+  @apply bg-transparent p-0;
+}
+
+.article-mdx code {
+  @apply rounded-md bg-[var(--muted-bg)] px-1.5 py-0.5 text-[0.9em] before:content-none after:content-none;
+}
+
+.article-mdx .anchor-link {
+  @apply no-underline;
+}
+
+.article-mdx figure {
+  @apply my-6;
+}
+
+.article-mdx figcaption {
+  @apply mb-2 text-xs text-[var(--muted)];
+}
+
+/* GFM markdown tables – full-width, balanced columns */
+.article-mdx table {
+  @apply w-full table-fixed text-sm;
+}
+
+.article-mdx thead {
+  @apply border-b border-[var(--border)] bg-[var(--muted-bg)];
+}
+
+.article-mdx th {
+  @apply px-4 py-2.5 text-left font-semibold text-[var(--foreground)];
+}
+
+.article-mdx td {
+  @apply break-words px-4 py-2.5 text-[var(--muted)];
+}
+
+.article-mdx tr {
+  @apply border-b border-[var(--border)] last:border-0;
+}
+
+.article-mdx tbody tr:nth-child(odd) {
+  @apply bg-[var(--card)];
+}
+
+.article-mdx tbody tr:nth-child(even) {
+  @apply bg-[var(--muted-bg)];
+}
